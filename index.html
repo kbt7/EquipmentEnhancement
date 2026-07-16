@@ -1130,6 +1130,23 @@ function marketPrices(strict, M) {
   return { V, S, predV };
 }
 
+// 相場を一切使わず、+0 の素材装備（装備価格）だけを起点に最適戦略で積み上げた理論値。
+//   V[k] = +k 素材装備、S[k] = +k 強化書（＝素材装備2個）。途中の強化書もすべて自作前提の自己無撞着な再帰。
+function scratchPrices(M) {
+  const N = state.prices.equip;
+  if (M === undefined) M = state.prices.kit;
+  const V = [], S = [];
+  for (let k = 0; k <= MAX_SCROLL; k++) {
+    if (k === 0) V[0] = N;
+    else {
+      const { E } = dpExpectedCost("F", k, S, M, "opt");   // S[0..k-1] は確定済み
+      V[k] = N + E[0];                                     // +0装備から +k まで育てる期待コスト
+    }
+    S[k] = 2 * V[k];
+  }
+  return { V, S };
+}
+
 // 指定ポリシーで 0→T をモンテカルロ試行し平均コストを返す
 function mcPolicyCost(rank, T, S, M, choice, trials) {
   let total = 0;
@@ -1449,37 +1466,46 @@ function renderKitMatrix(S, M) {
 /* ================= render: scroll buy-vs-create cost-effectiveness ================= */
 function renderScrollCostEff(mp) {
   const z = (v) => Math.round(v).toLocaleString() + " zen";
+  const sc = scratchPrices();     // 相場を使わず +0装備から積み上げた理論値
   let html = `<table class="rates">
-    <tr><th>強化書</th><th>買う（相場）</th><th>作る（素材2個）</th><th>差額</th><th>費用対効果</th><th>判定</th></tr>`;
+    <tr><th>強化書</th><th>① 買う<br>（強化書の相場）</th><th>② 素材から作る<br>（相場の +k 装備 2個）</th><th>③ 一から作る<br>（+0装備から積み上げ）</th><th>最安</th><th>費用対効果<br>（買値 ÷ 最安の自作）</th></tr>`;
   for (let k = 0; k <= MAX_SCROLL; k++) {
-    const buy = mp.S[k];           // 強化書相場（入力値 or 予想 2·V[k]）
-    const make = 2 * mp.V[k];      // 素材装備2個で作るコスト
-    const diff = buy - make;       // ＋なら作る方が安い
-    const ratio = make > 0 ? buy / make : 1;
-    let verdict, vcolor;
-    if (Math.abs(diff) < 1e-9 || Math.abs(diff) / Math.max(1, make) < 0.005) {
-      verdict = "同等"; vcolor = "var(--muted)";
-    } else if (diff > 0) {
-      verdict = "作る方が得"; vcolor = "var(--success)";
-    } else {
-      verdict = "買う方が得"; vcolor = "var(--accent)";
-    }
+    const buy = mp.S[k];          // 強化書相場（入力値 or 予想）
+    const make = 2 * mp.V[k];     // 同値の素材装備2個（相場ベース）
+    const scratch = sc.S[k];      // +0装備だけから最適戦略で積み上げた場合
+    const opts = [
+      { label: "① 買う", v: buy, color: "var(--accent)" },
+      { label: "② 素材から", v: make, color: "var(--success)" },
+      { label: "③ 一から", v: scratch, color: "var(--gold)" },
+    ];
+    const min = Math.min(buy, make, scratch);
+    const tol = Math.max(1e-9, min * 0.005);
+    const winners = opts.filter(o => o.v <= min + tol);
+    const bestLabel = winners.length === opts.length ? "同等" : winners.map(o => o.label).join(" / ");
+    const bestColor = winners.length === 1 ? winners[0].color : "var(--muted)";
+    const bestMake = Math.min(make, scratch);   // 自作の最安
+    const ratio = bestMake > 0 ? buy / bestMake : 1;
+    const hl = (v) => v <= min + tol ? "font-weight:700;color:var(--success)" : "";
     html += `<tr>
       <td>+${k} 強化書</td>
-      <td>${z(buy)}</td>
-      <td>${z(make)}</td>
-      <td style="color:${vcolor}">${diff >= 0 ? "+" : "−"}${Math.abs(Math.round(diff)).toLocaleString()} zen</td>
+      <td style="${hl(buy)}">${z(buy)}</td>
+      <td style="${hl(make)}">${z(make)}</td>
+      <td style="${hl(scratch)}">${z(scratch)}</td>
+      <td style="font-weight:700;color:${bestColor}">${bestLabel}</td>
       <td>×${ratio.toFixed(2)}</td>
-      <td style="font-weight:700;color:${vcolor}">${verdict}</td>
     </tr>`;
   }
   html += "</table>";
   document.getElementById("scroll-costeff-table").innerHTML = html;
 
   document.getElementById("scroll-costeff-note").innerHTML =
-    `「作る」= 同じ強化値の素材用装備（D以下）2個を変換して強化書1枚を作るコスト（相場表の装備価格 × 2）。<br>` +
-    `<b>費用対効果 ×N</b> は「相場 ÷ 作成コスト」。1.00超なら市場で買うより自分で作る方が割安で、その倍率だけお得です。<br>` +
-    `※強化書の相場を手入力していない行は、相場＝作成コスト（×1.00・同等）になります。実際の販売価格を入力すると差が出ます。`;
+    `<b>① 買う</b> = 強化書をそのまま相場で買う。<br>` +
+    `<b>② 素材から作る</b> = 同じ強化値の素材用装備（D以下）を相場で2個買って変換する（相場表の +k 装備価格 × 2）。<br>` +
+    `<b>③ 一から作る</b> = <b>相場を一切使わず</b>、+0 の素材装備（${state.prices.equip.toLocaleString()} zen）だけを買って、` +
+    `途中の強化書もすべて自作しながら最適戦略（確率強化／キット使い分け）で +k まで積み上げた場合の期待コスト。<br>` +
+    `<b>費用対効果 ×N</b> は「買値 ÷ ②③のうち安い方」。1.00超なら買うより自作が割安で、その倍率だけお得です。<br>` +
+    `※相場を何も入力していない場合、①②③はすべて同じ理論値（同等）になります。相場を入力すると、` +
+    `「途中の強化値を相場で買って近道する」②と「完全自給する」③の差が出ます。`;
 }
 
 /* ================= tabs / global ================= */
