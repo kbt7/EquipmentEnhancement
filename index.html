@@ -572,6 +572,12 @@ function esc(s) {
 function fmt(n) {
   return (Math.round(n * 100) / 100).toString();
 }
+// zen 表示: 1000以上は整数＋桁区切り、小額は小数2桁まで
+function fmtZen(v) {
+  return v >= 1000
+    ? Math.round(v).toLocaleString()
+    : (Math.round(v * 100) / 100).toLocaleString();
+}
 function getItem(id) {
   return state.equipment.find(e => e.id === id) || null;
 }
@@ -1417,12 +1423,13 @@ function renderKitMatrix(S, M) {
     opts.forEach(opt => {
       const d = opt.detail[k];
       const kit = opt.choice[k] === "kit";
-      const cheaper = Math.min(d.eRoll, d.eKit);
-      const gapPct = cheaper > 0 ? Math.abs(d.eRoll - d.eKit) / cheaper * 100 : 0;
+      const gapZen = Math.abs(d.eRoll - d.eKit);
+      const stepKit = S[k] + M;   // この1段をキット確定強化する直接コスト（＝割高率の基準）
+      const gapPct = stepKit > 0 ? gapZen / stepKit * 100 : 0;
       const bg = kit ? "rgba(80,160,120,0.22)" : "rgba(80,120,200,0.16)";
       html += `<td style="background:${bg}">
         <b style="color:${kit ? "var(--success)" : "var(--accent)"}">${kit ? "🔧 キット" : "🎲 確率"}</b>
-        <br><span style="color:var(--muted);font-size:0.72rem">差 ${gapPct.toFixed(0)}%</span>
+        <br><span style="color:var(--muted);font-size:0.72rem">差 ${gapPct.toFixed(2)}%<br>${fmtZen(gapZen)} zen</span>
       </td>`;
     });
     html += "</tr>";
@@ -1433,7 +1440,10 @@ function renderKitMatrix(S, M) {
   document.getElementById("kit-matrix-note").innerHTML =
     `<b style="color:var(--success)">🔧 キット</b> = 解読キットで確定強化した方が安い、` +
     `<b style="color:var(--accent)">🎲 確率</b> = 強化書だけで運任せに強化した方が安い、という推奨です。<br>` +
-    `目標 +${MAX_PLUS}・強化書は相場表の値・キット ${M.toLocaleString()} zen として計算。「差」は安い方に対する高い方の割高率（大きいほど推奨がはっきりしています）。`;
+    `<b>zen</b> = そのステップで推奨と逆を選んだ場合に余分にかかる額（+${MAX_PLUS} 到達までの期待コスト差）。` +
+    `<b>%</b> はその額を「このステップをキット確定強化する直接コスト（+k 強化書 ＋ キット）」で割った1段あたりの割高率で、` +
+    `大きいほど推奨がはっきりしています。<br>` +
+    `目標 +${MAX_PLUS}・強化書は相場表の値・キット ${M.toLocaleString()} zen として計算。`;
 }
 
 /* ================= render: scroll buy-vs-create cost-effectiveness ================= */
