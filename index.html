@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>装備強化シミュレーター</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1b1e27;
+    --panel2: #232734;
+    --border: #2e3342;
+    --text: #e6e9f0;
+    --muted: #8b91a3;
+    --accent: #4f8cff;
+    --success: #4caf7d;
+    --great: #3aa0ff;
+    --super: #c77dff;
+    --fail: #e05c5c;
+    --gold: #e8b84b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 { font-size: 1.15rem; font-weight: 600; }
+  header h1 span { color: var(--accent); margin-right: 8px; }
+  .header-btns { display: flex; gap: 8px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-body { padding: 12px 14px; }
+
+  /* ---- buttons / inputs ---- */
+  button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover:not(:disabled) { background: #2b3040; border-color: #3d4356; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #3d7bf0; }
+  button.danger-ghost { color: var(--fail); }
+  select, input[type="text"], input[type="number"] {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+
+  /* ---- rank badges ---- */
+  .rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .rank-F { background: #3a3f4d; color: #aab0c0; }
+  .rank-E { background: #2e4d3a; color: #7fd6a2; }
+  .rank-D { background: #1f4d4d; color: #6fd6d0; }
+  .rank-C { background: #1f3a5e; color: #6faef5; }
+  .rank-B { background: #3d2e5e; color: #b18cf0; }
+  .rank-A { background: #5e3d1f; color: #f0a95c; }
+  .rank-S { background: #5e1f2a; color: #f57f8c; }
+
+  /* ---- inventory list ---- */
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .item-row:hover { background: var(--panel2); }
+  .item-row.selected { background: #22304d; border-color: var(--accent); }
+  .item-name { flex: 1; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-plus { font-weight: 700; color: var(--gold); font-size: 0.88rem; min-width: 34px; text-align: right; }
+  .item-del {
+    background: none; border: none; color: var(--muted);
+    font-size: 0.9rem; padding: 2px 5px; cursor: pointer;
+  }
+  .item-del:hover { color: var(--fail); }
+
+  .scroll-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .scroll-chip {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+  }
+  .scroll-chip b { color: var(--gold); }
+  .empty-note { color: var(--muted); font-size: 0.82rem; padding: 6px 2px; }
+
+  /* ---- add form ---- */
+  .add-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .add-form input[type="text"] { flex: 1; min-width: 100px; }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 10px; background: var(--panel); border-radius: 10px 10px 0 0; }
+  .tab {
+    padding: 11px 16px;
+    font-size: 0.88rem;
+    color: var(--muted);
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+  }
+  .tab:hover { color: var(--text); background: none; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-body { display: none; padding: 16px; }
+  .tab-body.active { display: block; }
+  .main-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+
+  /* ---- forge ---- */
+  .forge-target {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .forge-target .item-plus { font-size: 1.05rem; }
+  .rate-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .rate-cell {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+  }
+  .rate-cell .label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+  .rate-cell .value { font-size: 1.15rem; font-weight: 700; }
+  .rate-cell.c-success .value { color: var(--success); }
+  .rate-cell.c-great .value { color: var(--great); }
+  .rate-cell.c-super .value { color: var(--super); }
+  .rate-cell.c-fail .value { color: var(--fail); }
+  .rate-bar {
+    display: flex; height: 10px; border-radius: 5px; overflow: hidden;
+    border: 1px solid var(--border); margin-bottom: 14px;
+  }
+  .rate-bar div { height: 100%; }
+  .forge-info { font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; }
+  .forge-info b { color: var(--gold); }
+  .forge-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .result-box {
+    margin-top: 16px;
+    padding: 18px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    display: none;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+  }
+  .result-box.show { display: block; animation: pop 0.3s ease; }
+  .result-box .sub { font-size: 0.85rem; font-weight: 400; color: var(--muted); margin-top: 6px; }
+  .result-success { color: var(--success); }
+  .result-great { color: var(--great); }
+  .result-super { color: var(--super); }
+  .result-fail { color: var(--fail); }
+  @keyframes pop {
+    0% { transform: scale(0.85); opacity: 0; }
+    60% { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ---- convert ---- */
+  .convert-group {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .convert-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .convert-head .plusval { font-weight: 700; color: var(--gold); font-size: 1rem; min-width: 40px; }
+  .convert-head .count { color: var(--muted); font-size: 0.82rem; }
+  .stepper { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .stepper button { width: 30px; height: 30px; padding: 0; font-size: 1.05rem; line-height: 1; }
+  .stepper .pairs { min-width: 56px; text-align: center; font-size: 0.88rem; }
+  .stepper .pairs b { color: var(--accent); font-size: 1.05rem; }
+  .convert-preview { margin-top: 8px; font-size: 0.78rem; color: var(--muted); line-height: 1.6; }
+  .convert-preview .consume { color: var(--fail); }
+  .convert-actions { margin-top: 10px; }
+
+  /* ---- log / stats ---- */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px; }
+  .stat-cell { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+  .stat-cell .label { font-size: 0.72rem; color: var(--muted); }
+  .stat-cell .value { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+  .stat-cell .rate { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .log-list { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .log-entry {
+    font-size: 0.82rem;
+    padding: 6px 10px;
+    background: var(--panel2);
+    border-radius: 6px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .log-entry .time { color: var(--muted); font-size: 0.72rem; flex-shrink: 0; }
+  .log-entry .tag { font-weight: 700; flex-shrink: 0; }
+  .log-entry .desc { flex: 1; }
+
+  /* ---- rate table ---- */
+  table.rates { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table.rates th, table.rates td {
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    text-align: center;
+  }
+  table.rates th { background: var(--panel2); color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; margin-bottom: 20px; }
+  h3.section { font-size: 0.9rem; margin: 4px 0 10px; color: var(--text); }
+  .note { font-size: 0.8rem; color: var(--muted); line-height: 1.7; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>⚒</span>装備強化シミュレーター</h1>
+  <div class="header-btns">
+    <button id="btn-reset">初期状態に戻す</button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- ============ left: inventory ============ -->
+  <div>
+    <div class="panel" style="margin-bottom: 14px;">
+      <div class="panel-head">
+        <span>装備一覧</span>
+        <span id="equip-count" style="font-weight:400"></span>
+      </div>
+      <div class="panel-body">
+        <div id="equip-list"></div>
+        <div class="add-form">
+          <input type="number" id="add-count" value="1" min="1" max="999" style="width:64px" title="個数">
+          <select id="add-rank">
+            <option>F</option><option>E</option><option>D</option>
+            <option>C</option><option>B</option><option>A</option><option>S</option>
+          </select>
+          <select id="add-plus"></select>
+          <button class="primary" id="btn-add">追加</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 14px;">
+      <div class="panel-head"><span>強化書</span></div>
+      <div class="panel-body">
+        <div class="scroll-chips" id="scroll-list"></div>
+        <div class="add-form" style="margin-top:10px">
+          <select id="scroll-add-plus"></select>
+          <input type="number" id="scroll-add-count" value="1" min="1" max="999" style="width:64px">
+          <button id="btn-scroll-add">強化書を追加</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 14px;">
+      <div class="panel-head"><span>強化書解読キット</span></div>
+      <div class="panel-body">
+        <div class="scroll-chips" id="kit-list"></div>
+        <div class="add-form" style="margin-top:10px">
+          <input type="number" id="kit-add-count" value="1" min="1" max="999" style="width:64px">
+          <button id="btn-kit-add">キットを追加</button>
+        </div>
+        <div class="note" style="margin-top:8px">強化時に使用すると<b style="color:var(--success)">100%で成功（+1）のみ</b>になります（大成功・超大成功・失敗なし）。</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span>価格設定（zen）</span></div>
+      <div class="panel-body">
+        <div class="add-form" style="align-items:center">
+          <label style="font-size:0.8rem;color:var(--muted)">装備価格</label>
+          <input type="number" id="price-equip" min="0" style="width:80px"> zen
+        </div>
+        <div class="add-form" style="align-items:center;margin-top:6px">
+          <label style="font-size:0.8rem;color:var(--muted)">キット価格</label>
+          <input type="number" id="price-kit" min="0" style="width:80px"> zen
+        </div>
+        <div class="note" style="margin-top:8px" id="price-summary"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ right: main tabs ============ -->
+  <div class="main-panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="forge">⚒ 鍛冶屋（強化）</button>
+      <button class="tab" data-tab="convert">⇄ 強化書作成（変換）</button>
+      <button class="tab" data-tab="sim">🧪 検証</button>
+      <button class="tab" data-tab="log">📊 統計・履歴</button>
+      <button class="tab" data-tab="rates">📋 確率・価格表</button>
+    </div>
+
+    <!-- forge -->
+    <div class="tab-body active" id="tab-forge"></div>
+
+    <!-- convert -->
+    <div class="tab-body" id="tab-convert"></div>
+
+    <!-- sim -->
+    <div class="tab-body" id="tab-sim">
+      <h3 class="section">モンテカルロ検証（所持品は消費しません）</h3>
+      <div class="note" style="margin:0 0 12px">
+        強化書は無制限にあるものとして、指定した条件で「開始強化値 → 目標強化値」への強化を大量に試行し、
+        必要な強化書の枚数・試行回数の統計を出します。
+      </div>
+      <div class="add-form" style="align-items:center;gap:10px">
+        <label style="font-size:0.82rem;color:var(--muted)">ランク</label>
+        <select id="sim-rank">
+          <option>F</option><option>E</option><option>D</option>
+          <option>C</option><option>B</option><option>A</option><option>S</option>
+        </select>
+        <label style="font-size:0.82rem;color:var(--muted)">開始</label>
+        <select id="sim-start"></select>
+        <label style="font-size:0.82rem;color:var(--muted)">目標</label>
+        <select id="sim-target"></select>
+        <label style="font-size:0.82rem;color:var(--muted)">試行回数</label>
+        <input type="number" id="sim-trials" value="10000" min="1" max="100000" style="width:90px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;color:var(--muted)">
+          <input type="checkbox" id="sim-kit">解読キット使用
+        </label>
+        <button class="primary" id="btn-sim-run">検証を実行</button>
+      </div>
+      <div id="sim-result" style="margin-top:16px"></div>
+
+      <h3 class="section" style="margin-top:28px">🔧 解読キット戦略の最適化</h3>
+      <div class="note" style="margin:0 0 12px">
+        各強化値で「キットを使う／使わない」どちらが期待コスト（zen）で得かを計算します。
+        価格は左の価格設定を使用。強化書の価格は「同値装備2個分の調達コスト」として再帰的に算出します。
+      </div>
+      <div class="add-form" style="align-items:center;gap:10px">
+        <label style="font-size:0.82rem;color:var(--muted)">ランク</label>
+        <select id="opt-rank">
+          <option>F</option><option>E</option><option>D</option>
+          <option>C</option><option>B</option><option selected>A</option><option>S</option>
+        </select>
+        <label style="font-size:0.82rem;color:var(--muted)">目標</label>
+        <select id="opt-target"></select>
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;color:var(--muted)" title="強化書の材料装備をキット確定強化で調達したとみなす（高コスト・厳密）か、最適戦略で調達したとみなす（低コスト・近似）か">
+          <input type="checkbox" id="opt-strict">材料はキット確定調達で計算
+        </label>
+        <button class="primary" id="btn-opt-run">最適戦略を計算</button>
+        <button id="btn-opt-all">全ランク比較＋キット価格感度</button>
+      </div>
+      <div id="opt-result" style="margin-top:16px"></div>
+      <div id="opt-summary" style="margin-top:16px"></div>
+    </div>
+
+    <!-- log -->
+    <div class="tab-body" id="tab-log"></div>
+
+    <!-- rates -->
+    <div class="tab-body" id="tab-rates">
+      <h3 class="section">ランク別 基礎成功率</h3>
+      <div class="table-wrap">
+        <table class="rates">
+          <tr><th>ランク</th><th>成功（+1）</th><th>大成功（+2）</th><th>超大成功（+3）</th><th>合計</th></tr>
+          <tr><td>F / E / D</td><td>45%</td><td>15%</td><td>5%</td><td>65%</td></tr>
+          <tr><td>C / B</td><td>40%</td><td>12%</td><td>3%</td><td>55%</td></tr>
+          <tr><td>A / S</td><td>35%</td><td>8%</td><td>2%</td><td>45%</td></tr>
+        </table>
+      </div>
+      <h3 class="section">強化値による成功率補正</h3>
+      <div class="table-wrap">
+        <table class="rates">
+          <tr><th>強化値</th><th>成功率補正</th></tr>
+          <tr><td>+0 〜 +3</td><td>×1.00</td></tr>
+          <tr><td>+4 〜 +6</td><td>×0.90</td></tr>
+          <tr><td>+7 〜 +9</td><td>×0.75</td></tr>
+          <tr><td>+10 〜 +12</td><td>×0.60</td></tr>
+        </table>
+      </div>
+      <h3 class="section">実効成功率一覧（成功＋大成功＋超大成功の合計）</h3>
+      <div class="table-wrap" id="effective-table"></div>
+      <h3 class="section">価格表（解読キット使用・100%成功で+1ずつ強化した場合）</h3>
+      <div class="table-wrap" id="price-table"></div>
+      <div class="note" id="price-formula"></div>
+      <h3 class="section" style="margin-top:20px">+k 強化書の作成価格（ランク別・最適戦略で材料を調達した場合）</h3>
+      <div class="table-wrap" id="scroll-price-table"></div>
+      <div class="note">
+        「+k 強化書1枚 = +k 装備2個」なので、装備の調達コスト（各強化値で確率強化とキットを最適に使い分けて+kまで育てる期待コスト）の2倍が作成価格です。
+        ランクによって成功率が違うため、同じ+kでも作成価格が変わります。上のキット確定の表は「絶対に失敗しない」前提の上限値です。
+      </div>
+      <div class="note" style="margin-top:14px">
+        ・強化には対象装備と同じ強化値の強化書が1枚必要です。<br>
+        ・失敗しても装備は消えず、強化書のみ消費されます。<br>
+        ・強化書解読キットを併用すると、確率に関係なく100%で成功（+1）のみになります。<br>
+        ・成功率補正表の範囲（+12まで）を超えた装備（+13以上）は強化できません。<br>
+        ・強化書は「同じ強化値の装備2つ」から1枚作成できます（変換した装備は消滅・最大10ペアまで一括作成可）。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ================= constants ================= */
+const RANKS = ["F", "E", "D", "C", "B", "A", "S"];
+const BASE_RATES = {
+  F: [45, 15, 5], E: [45, 15, 5], D: [45, 15, 5],
+  C: [40, 12, 3], B: [40, 12, 3],
+  A: [35, 8, 2], S: [35, 8, 2],
+};
+const MAX_ENHANCE_FROM = 12;   // 強化試行できる上限（補正表の範囲）
+const MAX_PAIRS = 10;          // 一括変換の最大ペア数
+const STORAGE_KEY = "equip-enhance-sim-v5";
+
+function plusMultiplier(plus) {
+  if (plus <= 3) return 1.00;
+  if (plus <= 6) return 0.90;
+  if (plus <= 9) return 0.75;
+  return 0.60; // +10〜+12
+}
+
+// returns [success, great, super, fail] in %
+function ratesFor(rank, plus) {
+  const [s, g, u] = BASE_RATES[rank];
+  const m = plusMultiplier(plus);
+  const rs = s * m, rg = g * m, ru = u * m;
+  return [rs, rg, ru, 100 - rs - rg - ru];
+}
+
+/* ================= state ================= */
+let state = null;
+let nextId = 1;
+let selectedId = null;          // forge target equipment id
+let convertPairs = {};          // plus value -> pair count (UI state, not persisted)
+let useKit = false;             // 解読キット使用トグル (UI state)
+
+function defaultState() {
+  return {
+    equipment: [],
+    scrolls: {},                      // plus -> count
+    kits: 0,                          // 強化書解読キット所持数
+    prices: { equip: 2, kit: 3 },     // 装備価格 / キット価格 (zen)
+    stats: { attempts: 0, success: 0, great: 0, super: 0, fail: 0, converted: 0, kits: 0 },
+    log: [],
+  };
+}
+
+// 古いデータや欠損フィールドの補完
+function normalizeState() {
+  if (typeof state.kits !== "number") state.kits = 0;
+  if (!state.prices) state.prices = { equip: 2, kit: 3 };
+  if (typeof state.stats.kits !== "number") state.stats.kits = 0;
+}
+
+function mkItem(rank, plus) {
+  return { id: nextId++, rank, plus };
+}
+
+function itemLabel(it) {
+  return `${it.rank}ランク装備`;
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state, nextId }));
+  } catch (e) { /* private mode etc. */ }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.state && Array.isArray(data.state.equipment)) {
+        state = data.state;
+        nextId = data.nextId || 1;
+        normalizeState();
+        return;
+      }
+    }
+  } catch (e) { /* fall through */ }
+  state = defaultState();
+}
+
+/* ================= helpers ================= */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmt(n) {
+  return (Math.round(n * 100) / 100).toString();
+}
+function getItem(id) {
+  return state.equipment.find(e => e.id === id) || null;
+}
+function scrollCount(plus) {
+  return state.scrolls[plus] || 0;
+}
+function addLog(tag, cls, desc) {
+  const t = new Date();
+  const time = String(t.getHours()).padStart(2, "0") + ":" +
+               String(t.getMinutes()).padStart(2, "0") + ":" +
+               String(t.getSeconds()).padStart(2, "0");
+  state.log.unshift({ time, tag, cls, desc });
+  if (state.log.length > 200) state.log.length = 200;
+}
+
+/* ================= render: inventory ================= */
+function renderInventory() {
+  const list = document.getElementById("equip-list");
+  document.getElementById("equip-count").textContent = state.equipment.length + "個";
+
+  // 同ランク・同強化値をスタック表示
+  const groups = new Map();
+  state.equipment.forEach(it => {
+    const key = `${it.rank}|${it.plus}`;
+    if (!groups.has(key)) groups.set(key, { rank: it.rank, plus: it.plus, items: [] });
+    groups.get(key).items.push(it);
+  });
+  const sorted = [...groups.values()].sort((a, b) =>
+    RANKS.indexOf(b.rank) - RANKS.indexOf(a.rank) || b.plus - a.plus);
+
+  if (!sorted.length) {
+    list.innerHTML = '<div class="empty-note">装備がありません。下のフォームから追加してください。</div>';
+  } else {
+    list.innerHTML = sorted.map(g => {
+      const selected = g.items.some(it => it.id === selectedId);
+      return `
+      <div class="item-row ${selected ? "selected" : ""}" data-first="${g.items[0].id}">
+        <span class="rank rank-${g.rank}">${g.rank}</span>
+        <span class="item-name" style="color:var(--muted)">装備${g.items.length > 1 ? ` <b style="color:var(--text)">× ${g.items.length}</b>` : ""}</span>
+        <span class="item-plus">+${g.plus}</span>
+        <button class="item-del" data-del="${g.items[g.items.length - 1].id}" data-count="${g.items.length}" title="1個削除">✕</button>
+      </div>`;
+    }).join("");
+  }
+
+  list.querySelectorAll(".item-row").forEach(row => {
+    row.addEventListener("click", (ev) => {
+      if (ev.target.closest(".item-del")) return;
+      selectedId = Number(row.dataset.first);
+      renderAll();
+      switchTab("forge");
+    });
+  });
+  list.querySelectorAll(".item-del").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = Number(btn.dataset.del);
+      const it = getItem(id);
+      if (it && confirm(`「${itemLabel(it)} +${it.plus}」を1個削除しますか？`)) {
+        state.equipment = state.equipment.filter(e => e.id !== id);
+        if (selectedId === id) selectedId = null;
+        save();
+        renderAll();
+      }
+    });
+  });
+}
+
+function renderScrolls() {
+  const el = document.getElementById("scroll-list");
+  const entries = Object.entries(state.scrolls)
+    .map(([p, c]) => [Number(p), c])
+    .filter(([, c]) => c > 0)
+    .sort((a, b) => a[0] - b[0]);
+  el.innerHTML = entries.length
+    ? entries.map(([p, c]) => `<span class="scroll-chip">📜 <b>+${p}</b> 強化書 × ${c}</span>`).join("")
+    : '<div class="empty-note">強化書がありません。「強化書作成」タブで装備2つから作成できます。</div>';
+
+  document.getElementById("kit-list").innerHTML =
+    `<span class="scroll-chip">🔧 解読キット × <b>${state.kits}</b></span>`;
+}
+
+function renderPrices() {
+  const n = state.prices.equip, m = state.prices.kit;
+  document.getElementById("price-equip").value = n;
+  document.getElementById("price-kit").value = m;
+  document.getElementById("price-summary").innerHTML =
+    `強化書1枚の作成価格: 装備2個 = <b style="color:var(--gold)">${(2 * n).toLocaleString()} zen</b>（+0装備の場合）<br>` +
+    `キット使用の確定強化1回: 強化書 + キット = <b style="color:var(--gold)">${(2 * n + m).toLocaleString()} zen</b>〜`;
+}
+
+/* ================= render: forge ================= */
+function renderForge() {
+  const el = document.getElementById("tab-forge");
+  const it = getItem(selectedId);
+
+  if (!it) {
+    el.innerHTML = '<div class="empty-note">左の装備一覧から、強化したい装備を選択してください。</div>';
+    return;
+  }
+
+  if (it.plus > MAX_ENHANCE_FROM) {
+    el.innerHTML = `
+      <div class="forge-target">
+        <span class="rank rank-${it.rank}">${it.rank}</span>
+        <span class="item-name">${itemLabel(it)}</span>
+        <span class="item-plus">+${it.plus}</span>
+      </div>
+      <div class="empty-note">この装備は +${MAX_ENHANCE_FROM} を超えているため、これ以上強化できません。</div>`;
+    return;
+  }
+
+  if (state.kits < 1) useKit = false;
+  const [rs, rg, ru, rf] = useKit ? [100, 0, 0, 0] : ratesFor(it.rank, it.plus);
+  const scrolls = scrollCount(it.plus);
+  const mult = plusMultiplier(it.plus);
+
+  el.innerHTML = `
+    <div class="forge-target">
+      <span class="rank rank-${it.rank}">${it.rank}</span>
+      <span class="item-name" style="font-size:1rem">${itemLabel(it)}</span>
+      <span class="item-plus">+${it.plus}</span>
+    </div>
+
+    <div class="forge-info">
+      必要: <b>+${it.plus} 強化書 × 1</b>（所持: ${scrolls}枚）
+      ${useKit ? "＋ <b>解読キット × 1</b>（所持: " + state.kits + "個）" : ""}
+      ／ ランク補正: ${BASE_RATES[it.rank].join("/")}% ／ 強化値補正: ×${mult.toFixed(2)}
+      ${useKit ? '<br><span style="color:var(--success)">🔧 解読キット使用中: 確率補正を無視して 100% 成功（+1）のみになります</span>' : ""}
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+        <input type="checkbox" id="chk-kit" ${useKit ? "checked" : ""} ${state.kits < 1 ? "disabled" : ""}>
+        🔧 強化書解読キットを使用する（所持: ${state.kits}個）
+        ${state.kits < 1 ? '<span style="color:var(--fail)">— キットがありません</span>' : ""}
+      </label>
+    </div>
+
+    <div class="rate-grid">
+      <div class="rate-cell c-success"><div class="label">成功（+1）</div><div class="value">${fmt(rs)}%</div></div>
+      <div class="rate-cell c-great"><div class="label">大成功（+2）</div><div class="value">${fmt(rg)}%</div></div>
+      <div class="rate-cell c-super"><div class="label">超大成功（+3）</div><div class="value">${fmt(ru)}%</div></div>
+      <div class="rate-cell c-fail"><div class="label">失敗（強化書のみ消費）</div><div class="value">${fmt(rf)}%</div></div>
+    </div>
+    <div class="rate-bar">
+      <div style="width:${rs}%;background:var(--success)"></div>
+      <div style="width:${rg}%;background:var(--great)"></div>
+      <div style="width:${ru}%;background:var(--super)"></div>
+      <div style="width:${rf}%;background:var(--fail)"></div>
+    </div>
+
+    <div class="forge-actions">
+      <button class="primary" id="btn-forge-1" ${scrolls < 1 ? "disabled" : ""}>強化する</button>
+      <button id="btn-forge-10" ${scrolls < 1 ? "disabled" : ""}>連続強化（最大10回）</button>
+      <button id="btn-forge-all" ${scrolls < 1 ? "disabled" : ""}>尽きるまで連続強化</button>
+      ${scrolls < 1 ? '<span style="font-size:0.8rem;color:var(--fail)">+' + it.plus + ' 強化書が不足しています</span>' : ""}
+    </div>
+
+    <div class="result-box" id="forge-result"></div>`;
+
+  const b1 = document.getElementById("btn-forge-1");
+  const b10 = document.getElementById("btn-forge-10");
+  const bAll = document.getElementById("btn-forge-all");
+  if (b1) b1.addEventListener("click", () => doForge(it.id, 1));
+  if (b10) b10.addEventListener("click", () => doForge(it.id, 10));
+  if (bAll) bAll.addEventListener("click", () => doForge(it.id, 100000));
+  const chk = document.getElementById("chk-kit");
+  if (chk) chk.addEventListener("change", () => {
+    useKit = chk.checked;
+    renderForge();
+  });
+}
+
+// roll one attempt; returns {outcome, gained}
+function rollEnhance(rank, plus) {
+  const [rs, rg, ru] = ratesFor(rank, plus);
+  const r = Math.random() * 100;
+  if (r < ru) return { outcome: "super", gained: 3 };
+  if (r < ru + rg) return { outcome: "great", gained: 2 };
+  if (r < ru + rg + rs) return { outcome: "success", gained: 1 };
+  return { outcome: "fail", gained: 0 };
+}
+
+const OUTCOME_LABEL = {
+  success: ["成功", "result-success", "+1"],
+  great: ["大成功", "result-great", "+2"],
+  super: ["超大成功", "result-super", "+3"],
+  fail: ["失敗", "result-fail", "±0"],
+};
+
+function doForge(id, times) {
+  const it = getItem(id);
+  if (!it) return;
+
+  const results = [];
+  for (let i = 0; i < times; i++) {
+    if (it.plus > MAX_ENHANCE_FROM) break;          // 補正表の範囲外に到達
+    if (scrollCount(it.plus) < 1) break;            // その強化値の強化書切れ
+    if (useKit && state.kits < 1) break;            // キット切れ
+    state.scrolls[it.plus] = scrollCount(it.plus) - 1;
+
+    const before = it.plus;
+    let outcome, gained;
+    if (useKit) {
+      state.kits--;
+      state.stats.kits++;
+      outcome = "success";                          // キット使用: 100%で成功(+1)のみ
+      gained = 1;
+    } else {
+      ({ outcome, gained } = rollEnhance(it.rank, it.plus));
+    }
+    it.plus += gained;
+
+    state.stats.attempts++;
+    state.stats[outcome]++;
+    results.push({ outcome, before, after: it.plus });
+
+    const [label] = OUTCOME_LABEL[outcome];
+    addLog(label, "result-" + outcome,
+      `${itemLabel(it)} +${before} → ` +
+      (outcome === "fail" ? `+${before}（強化書 +${before} を1枚消費）` : `+${it.plus}`) +
+      (useKit ? "〔解読キット使用〕" : ""));
+  }
+
+  save();
+  renderAll();
+  switchTab("forge");   // keep tab
+
+  // show result of the batch
+  const box = document.getElementById("forge-result");
+  if (!box || !results.length) return;
+  const last = results[results.length - 1];
+  const [label, cls] = OUTCOME_LABEL[last.outcome];
+
+  if (results.length === 1) {
+    box.className = "result-box show " + cls;
+    box.innerHTML = `${label}！ <span style="font-weight:400">+${last.before} → </span>+${last.after}` +
+      (last.outcome === "fail" ? '<div class="sub">装備は残りました。強化書のみ消費されました。</div>' : "");
+  } else {
+    const cnt = { success: 0, great: 0, super: 0, fail: 0 };
+    results.forEach(r => cnt[r.outcome]++);
+    box.className = "result-box show";
+    box.innerHTML =
+      `<span style="font-size:0.95rem;font-weight:600">${results.length}回 強化: ` +
+      `<span class="result-success">成功${cnt.success}</span> / ` +
+      `<span class="result-great">大成功${cnt.great}</span> / ` +
+      `<span class="result-super">超大成功${cnt.super}</span> / ` +
+      `<span class="result-fail">失敗${cnt.fail}</span></span>` +
+      `<div style="margin-top:6px">+${results[0].before} → +${last.after}</div>`;
+  }
+}
+
+/* ================= render: convert ================= */
+function renderConvert() {
+  const el = document.getElementById("tab-convert");
+
+  // group equipment by plus value
+  const groups = {};
+  state.equipment.forEach(it => {
+    (groups[it.plus] = groups[it.plus] || []).push(it);
+  });
+  const keys = Object.keys(groups).map(Number).sort((a, b) => a - b);
+  const convertible = keys.filter(k => groups[k].length >= 2);
+
+  let html = `
+    <div class="note" style="margin:0 0 14px">
+      同じ強化値の装備2つ → その強化値の強化書1枚 に変換します（変換した装備は<span class="consume" style="color:var(--fail)">消滅</span>）。<br>
+      ＋ボタンで最大${MAX_PAIRS}ペアまでまとめて作成できます。<br>
+      強化書作成価格の目安: 装備2個 = <b style="color:var(--gold)">${(2 * state.prices.equip).toLocaleString()} zen</b>（装備 = ${state.prices.equip.toLocaleString()} zen、+0装備の場合）
+    </div>`;
+
+  if (!convertible.length) {
+    html += '<div class="empty-note">変換できるペアがありません（同じ強化値の未装備の装備が2つ以上必要です）。</div>';
+    el.innerHTML = html;
+    return;
+  }
+
+  convertible.forEach(plus => {
+    const items = groups[plus].sort((a, b) =>
+      RANKS.indexOf(a.rank) - RANKS.indexOf(b.rank) || a.id - b.id);
+    const maxPairs = Math.min(MAX_PAIRS, Math.floor(items.length / 2));
+    const pairs = Math.min(convertPairs[plus] || 0, maxPairs);
+    convertPairs[plus] = pairs;
+
+    const consumed = items.slice(0, pairs * 2);
+    html += `
+      <div class="convert-group">
+        <div class="convert-head">
+          <span class="plusval">+${plus}</span>
+          <span class="count">対象 ${items.length}個（最大 ${maxPairs}ペア）</span>
+          <div class="stepper">
+            <button data-step="-1" data-plus="${plus}" ${pairs <= 0 ? "disabled" : ""}>−</button>
+            <span class="pairs"><b>${pairs}</b> ペア</span>
+            <button data-step="1" data-plus="${plus}" ${pairs >= maxPairs ? "disabled" : ""}>＋</button>
+          </div>
+        </div>
+        ${pairs > 0 ? `
+          <div class="convert-preview">
+            <span class="consume">消滅:</span> ${summarizeConsumed(consumed)}<br>
+            → 📜 <b style="color:var(--gold)">+${plus} 強化書 × ${pairs}</b> を作成
+          </div>
+          <div class="convert-actions">
+            <button class="primary" data-convert="${plus}">変換する（装備${pairs * 2}個 → 強化書${pairs}枚）</button>
+          </div>` : ""}
+        ${Math.floor(items.length / 2) > 0 ? `
+          <div class="convert-actions" style="margin-top:8px">
+            <button data-convert-all="${plus}" style="font-size:0.78rem">
+              🧪 全ペア一括変換（検証用・${Math.floor(items.length / 2)}ペア／10ペア制限を無視）
+            </button>
+          </div>` : ""}
+      </div>`;
+  });
+
+  el.innerHTML = html;
+
+  el.querySelectorAll("[data-step]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = Number(btn.dataset.plus);
+      convertPairs[p] = (convertPairs[p] || 0) + Number(btn.dataset.step);
+      renderConvert();
+    });
+  });
+  el.querySelectorAll("[data-convert]").forEach(btn => {
+    btn.addEventListener("click", () => doConvert(Number(btn.dataset.convert), false));
+  });
+  el.querySelectorAll("[data-convert-all]").forEach(btn => {
+    btn.addEventListener("click", () => doConvert(Number(btn.dataset.convertAll), true));
+  });
+}
+
+// 消滅リストをランク別に集計して短く表示（大量時対策）
+function summarizeConsumed(consumed) {
+  const byRank = {};
+  consumed.forEach(i => { byRank[i.rank] = (byRank[i.rank] || 0) + 1; });
+  return RANKS.filter(r => byRank[r])
+    .map(r => `${r}ランク × ${byRank[r]}`)
+    .join("、 ");
+}
+
+function doConvert(plus, unlimited) {
+  const items = state.equipment
+    .filter(it => it.plus === plus)
+    .sort((a, b) => RANKS.indexOf(a.rank) - RANKS.indexOf(b.rank) || a.id - b.id);
+  const maxAvail = Math.floor(items.length / 2);
+  const pairs = unlimited
+    ? maxAvail
+    : Math.min(convertPairs[plus] || 0, MAX_PAIRS, maxAvail);
+  if (pairs < 1) return;
+
+  const consumed = items.slice(0, pairs * 2);
+  if (!confirm(`装備 ${pairs * 2}個を消滅させて「+${plus} 強化書 × ${pairs}」を作成します。よろしいですか？\n\n` +
+      `消滅: ${summarizeConsumed(consumed)}` +
+      (unlimited ? "\n（検証用: 10ペア制限を無視した一括変換です）" : ""))) return;
+
+  const ids = new Set(consumed.map(i => i.id));
+  state.equipment = state.equipment.filter(it => !ids.has(it.id));
+  if (ids.has(selectedId)) selectedId = null;
+  state.scrolls[plus] = scrollCount(plus) + pairs;
+  state.stats.converted += pairs;
+  convertPairs[plus] = 0;
+
+  addLog("変換", "result-great",
+    `装備${pairs * 2}個 → +${plus} 強化書 × ${pairs}（${summarizeConsumed(consumed)} が消滅）` +
+    (unlimited ? "〔一括変換〕" : ""));
+  save();
+  renderAll();
+  switchTab("convert");
+}
+
+/* ================= monte carlo sim ================= */
+// 所持品を消費せず、強化書無制限の仮定で start → target を trials 回試行
+function runSim() {
+  const rank = document.getElementById("sim-rank").value;
+  const start = Number(document.getElementById("sim-start").value);
+  const target = Number(document.getElementById("sim-target").value);
+  const trials = Math.max(1, Math.min(100000, Number(document.getElementById("sim-trials").value) || 1));
+  const kit = document.getElementById("sim-kit").checked;
+  const out = document.getElementById("sim-result");
+
+  if (target <= start) {
+    out.innerHTML = '<div class="empty-note" style="color:var(--fail)">目標強化値は開始強化値より大きくしてください。</div>';
+    return;
+  }
+
+  const attemptsArr = [];          // 到達成功した試行の消費強化書数
+  const scrollSum = {};            // 強化値別 消費強化書 合計（全試行）
+  let stuck = 0;                   // +12超過で目標未到達（行き止まり）
+  let outcomeCnt = { success: 0, great: 0, super: 0, fail: 0 };
+
+  for (let t = 0; t < trials; t++) {
+    let plus = start, attempts = 0;
+    while (plus < target) {
+      if (plus > MAX_ENHANCE_FROM) { stuck++; attempts = -1; break; }
+      scrollSum[plus] = (scrollSum[plus] || 0) + 1;
+      attempts++;
+      if (kit) {
+        outcomeCnt.success++;
+        plus += 1;
+      } else {
+        const { outcome, gained } = rollEnhance(rank, plus);
+        outcomeCnt[outcome]++;
+        plus += gained;
+      }
+      if (attempts > 100000) { attempts = -1; break; }
+    }
+    if (attempts >= 0) attemptsArr.push(attempts);
+  }
+
+  const reached = attemptsArr.length;
+  if (!reached) {
+    out.innerHTML = '<div class="empty-note" style="color:var(--fail)">全試行が目標に到達できませんでした（+13以上で行き止まり）。目標を見直してください。</div>';
+    return;
+  }
+
+  attemptsArr.sort((a, b) => a - b);
+  const sum = attemptsArr.reduce((a, b) => a + b, 0);
+  const mean = sum / reached;
+  const median = attemptsArr[Math.floor(reached / 2)];
+  const min = attemptsArr[0], max = attemptsArr[reached - 1];
+  const totalAtt = Object.values(scrollSum).reduce((a, b) => a + b, 0);
+
+  // 強化値別 平均消費強化書
+  let scrollRows = "";
+  Object.keys(scrollSum).map(Number).sort((a, b) => a - b).forEach(p => {
+    scrollRows += `<tr><td>+${p} 強化書</td><td>${(scrollSum[p] / trials).toFixed(2)} 枚</td><td>${scrollSum[p].toLocaleString()} 枚</td></tr>`;
+  });
+
+  const pctAll = (n) => (n / totalAtt * 100).toFixed(2) + "%";
+  out.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-cell"><div class="label">試行回数</div><div class="value">${trials.toLocaleString()}</div></div>
+      <div class="stat-cell"><div class="label">目標到達率</div><div class="value" style="color:var(--success)">${(reached / trials * 100).toFixed(2)}%</div>${stuck ? `<div class="rate" style="color:var(--fail)">行き止まり ${stuck.toLocaleString()}回</div>` : ""}</div>
+      <div class="stat-cell"><div class="label">平均 消費強化書</div><div class="value" style="color:var(--gold)">${mean.toFixed(2)} 枚</div></div>
+      <div class="stat-cell"><div class="label">中央値</div><div class="value">${median} 枚</div></div>
+      <div class="stat-cell"><div class="label">最小 / 最大</div><div class="value">${min} / ${max}</div></div>
+      ${kit ? `<div class="stat-cell"><div class="label">平均 消費キット</div><div class="value" style="color:var(--gold)">${mean.toFixed(2)} 個</div></div>` : ""}
+    </div>
+    <div class="note" style="margin-bottom:12px">
+      条件: ${rank}ランク +${start} → +${target}${kit ? "（解読キット使用: 100%成功+1）" : ""}
+      ／ 全試行の強化結果内訳:
+      <span style="color:var(--success)">成功 ${pctAll(outcomeCnt.success)}</span>、
+      <span style="color:var(--great)">大成功 ${pctAll(outcomeCnt.great)}</span>、
+      <span style="color:var(--super)">超大成功 ${pctAll(outcomeCnt.super)}</span>、
+      <span style="color:var(--fail)">失敗 ${pctAll(outcomeCnt.fail)}</span>
+    </div>
+    <h3 class="section">強化値別 消費強化書（1回の試行あたり平均）</h3>
+    <div class="table-wrap">
+      <table class="rates">
+        <tr><th>強化書</th><th>平均消費</th><th>合計（全${trials.toLocaleString()}試行）</th></tr>
+        ${scrollRows}
+        <tr><th>合計</th><th>${(totalAtt / trials).toFixed(2)} 枚</th><th>${totalAtt.toLocaleString()} 枚</th></tr>
+      </table>
+    </div>
+    <div class="note">
+      ※強化書1枚 = 同じ強化値の装備2個。平均消費強化書 × 2 が「目標到達までに必要な同値装備の個数目安」です
+      （ただし +1以上の強化書の材料装備自体にも強化コストが掛かる点に注意）。
+    </div>`;
+}
+
+/* ================= kit strategy optimizer ================= */
+// 各強化値 j での確率（0〜1）を返す
+function probsFor(rank, j) {
+  const [rs, rg, ru] = ratesFor(rank, j);
+  return [rs / 100, rg / 100, ru / 100];
+}
+
+// 目標 T に向けた期待コストDP。policy: "opt" | "roll" | "kit"
+//   S[j] = +j 強化書の価格。返り値 E[j] = +j から +T以上 に到達する期待コスト
+function dpExpectedCost(rank, T, S, M, policy) {
+  const E = new Array(T + 3).fill(0);
+  const choice = new Array(T).fill("roll");
+  const detail = [];
+  for (let j = T - 1; j >= 0; j--) {
+    const [p1, p2, p3] = probsFor(rank, j);
+    const P = p1 + p2 + p3;
+    const eRoll = (S[j] + p1 * E[j + 1] + p2 * E[j + 2] + p3 * E[j + 3]) / P;
+    const eKit = S[j] + M + E[j + 1];
+    let use;
+    if (policy === "roll") use = "roll";
+    else if (policy === "kit") use = "kit";
+    else use = eKit < eRoll ? "kit" : "roll";
+    E[j] = use === "kit" ? eKit : eRoll;
+    choice[j] = use;
+    detail[j] = { eRoll, eKit };
+  }
+  return { E, choice, detail };
+}
+
+// 強化書価格 S[0..12] を算出
+//   strict: 材料装備をキット確定強化で調達（価格表と同モデル・厳密）
+//   それ以外: 材料装備も最適戦略で調達（自己無撞着・近似 ※超過到達分も+kとして扱う）
+function scrollPrices(rank, N, M, strict) {
+  const S = [2 * N];
+  if (strict) {
+    let c = N;
+    for (let k = 1; k <= MAX_ENHANCE_FROM; k++) {
+      c = 3 * c + M;
+      S[k] = 2 * c;
+    }
+  } else {
+    for (let k = 1; k <= MAX_ENHANCE_FROM; k++) {
+      const { E } = dpExpectedCost(rank, k, S, M, "opt");
+      S[k] = 2 * (N + E[0]);
+    }
+  }
+  return S;
+}
+
+// 指定ポリシーで 0→T をモンテカルロ試行し平均コストを返す
+function mcPolicyCost(rank, T, S, M, choice, trials) {
+  let total = 0;
+  for (let t = 0; t < trials; t++) {
+    let plus = 0;
+    while (plus < T) {
+      const useK = choice === "all" ? true : choice === "none" ? false : choice[plus] === "kit";
+      total += S[plus] + (useK ? M : 0);
+      if (useK) {
+        plus += 1;
+      } else {
+        plus += rollEnhance(rank, plus).gained;
+      }
+    }
+  }
+  return total / trials;
+}
+
+function runOptimize() {
+  const rank = document.getElementById("opt-rank").value;
+  const T = Number(document.getElementById("opt-target").value);
+  const strict = document.getElementById("opt-strict").checked;
+  const N = state.prices.equip, M = state.prices.kit;
+  const out = document.getElementById("opt-result");
+  const z = (v) => Math.round(v).toLocaleString();
+
+  const S = scrollPrices(rank, N, M, strict);
+  const opt = dpExpectedCost(rank, T, S, M, "opt");
+  const none = dpExpectedCost(rank, T, S, M, "roll");
+  const all = dpExpectedCost(rank, T, S, M, "kit");
+
+  const MC_TRIALS = 20000;
+  const mcOpt = mcPolicyCost(rank, T, S, M, opt.choice, MC_TRIALS);
+  const mcNone = mcPolicyCost(rank, T, S, M, "none", MC_TRIALS);
+  const mcAll = mcPolicyCost(rank, T, S, M, "all", MC_TRIALS);
+
+  const kitLevels = [];
+  for (let j = 0; j < T; j++) if (opt.choice[j] === "kit") kitLevels.push(j);
+
+  let rows = "";
+  for (let j = 0; j < T; j++) {
+    const d = opt.detail[j];
+    const kit = opt.choice[j] === "kit";
+    const saving = Math.abs(d.eRoll - d.eKit);
+    rows += `<tr>
+      <td>+${j} → +${j + 1}${kit ? "" : "〜+" + Math.min(j + 3, 15)}</td>
+      <td>${z(S[j])}</td>
+      <td style="${!kit ? "color:var(--success);font-weight:700" : "color:var(--muted)"}">${z(d.eRoll)}</td>
+      <td style="${kit ? "color:var(--success);font-weight:700" : "color:var(--muted)"}">${z(d.eKit)}</td>
+      <td style="font-weight:700;${kit ? "color:var(--accent)" : ""}">${kit ? "🔧 キット使用" : "確率強化"}</td>
+      <td style="color:var(--muted)">${z(saving)} 得</td>
+    </tr>`;
+  }
+
+  out.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-cell"><div class="label">最適戦略の期待コスト</div><div class="value" style="color:var(--success)">${z(opt.E[0])} zen</div><div class="rate">実測平均 ${z(mcOpt)} zen</div></div>
+      <div class="stat-cell"><div class="label">キット不使用</div><div class="value">${z(none.E[0])} zen</div><div class="rate">実測平均 ${z(mcNone)} zen</div></div>
+      <div class="stat-cell"><div class="label">全レベルでキット使用</div><div class="value">${z(all.E[0])} zen</div><div class="rate">実測平均 ${z(mcAll)} zen</div></div>
+    </div>
+    <div class="note" style="margin-bottom:12px">
+      条件: ${rank}ランク +0 → +${T}、装備 ${N.toLocaleString()} zen、キット ${M.toLocaleString()} zen、
+      強化書価格 = ${strict ? "キット確定調達（厳密）" : "最適戦略調達（近似）"}
+      ／ 実測平均は各戦略 ${MC_TRIALS.toLocaleString()} 回のモンテカルロ試行。<br>
+      <b style="color:var(--accent)">結論: ${
+        kitLevels.length === 0
+          ? "キットは一切使わないのが最適です。"
+          : kitLevels.length === T
+            ? "すべての強化値でキットを使うのが最適です。"
+            : `+${kitLevels[0]} 以上（${kitLevels.map(v => "+" + v).join(", ")}）でキットを使い、それ未満は確率強化が最適です。`
+      }</b>
+      キット不使用と比べて <b>${z(none.E[0] - opt.E[0])} zen</b>（${((1 - opt.E[0] / none.E[0]) * 100).toFixed(1)}%）の節約になります。
+    </div>
+    <div class="table-wrap">
+      <table class="rates">
+        <tr><th>強化ステップ</th><th>強化書価格</th><th>確率強化<br>期待コスト</th><th>キット使用<br>期待コスト</th><th>推奨</th><th>差額</th></tr>
+        ${rows}
+      </table>
+    </div>
+    <div class="note">
+      ・「確率強化 期待コスト」は失敗によるやり直しと、大成功・超大成功による強化値スキップの利益を織り込んだ +${T} 到達までの寄与分です。<br>
+      ・キットを使う値が連続しない場合もあります（境界付近では超過スキップの価値が変わるため）。<br>
+      ${strict ? "" : "・「最適戦略調達」は材料装備も最適戦略で作る前提の近似です（超過到達した装備も同値として利用できるとみなします）。"}
+    </div>`;
+}
+
+// [2,3,4,7,8] → "+2〜+4, +7〜+8" のように圧縮表示
+function compressLevels(arr) {
+  if (!arr.length) return "使用しない";
+  const parts = [];
+  let s = arr[0], prev = arr[0];
+  for (let i = 1; i <= arr.length; i++) {
+    if (i < arr.length && arr[i] === prev + 1) { prev = arr[i]; continue; }
+    parts.push(s === prev ? `+${s}` : `+${s}〜+${prev}`);
+    if (i < arr.length) { s = arr[i]; prev = arr[i]; }
+  }
+  return parts.join(", ");
+}
+
+function optKitLevels(rank, T, N, M, strict) {
+  const S = scrollPrices(rank, N, M, strict);
+  const opt = dpExpectedCost(rank, T, S, M, "opt");
+  const levels = [];
+  for (let j = 0; j < T; j++) if (opt.choice[j] === "kit") levels.push(j);
+  return { levels, S, opt };
+}
+
+// 全ランク比較＋キット価格Mの感度分析
+function runCompareAll() {
+  const T = Number(document.getElementById("opt-target").value);
+  const strict = document.getElementById("opt-strict").checked;
+  const N = state.prices.equip, M = state.prices.kit;
+  const out = document.getElementById("opt-summary");
+  const z = (v) => Math.round(v).toLocaleString();
+  const groups = [["F / E / D", "F"], ["C / B", "C"], ["A / S", "A"]];
+
+  // 比較表（現在の N・M）
+  let cmpRows = "";
+  groups.forEach(([label, r]) => {
+    const { levels, S, opt } = optKitLevels(r, T, N, M, strict);
+    const none = dpExpectedCost(r, T, S, M, "roll");
+    const all = dpExpectedCost(r, T, S, M, "kit");
+    cmpRows += `<tr>
+      <td>${label}</td>
+      <td style="color:var(--accent);font-weight:700">${compressLevels(levels)}</td>
+      <td style="color:var(--success);font-weight:700">${z(opt.E[0])}</td>
+      <td>${z(none.E[0])}</td>
+      <td>${z(all.E[0])}</td>
+      <td>${((1 - opt.E[0] / none.E[0]) * 100).toFixed(1)}%</td>
+    </tr>`;
+  });
+
+  // M感度表（Nは現在値で固定）
+  const Ms = [...new Set([0, N, 3 * N, M, 10 * N, 30 * N, 100 * N])].sort((a, b) => a - b);
+  let senRows = "";
+  Ms.forEach(m => {
+    senRows += `<tr><td>${m.toLocaleString()} zen${m === M ? " <b style='color:var(--gold)'>（現在値）</b>" : ""}</td>` +
+      groups.map(([, r]) => `<td>${compressLevels(optKitLevels(r, T, N, m, strict).levels)}</td>`).join("") +
+      "</tr>";
+  });
+
+  out.innerHTML = `
+    <h3 class="section">全ランク比較（+0 → +${T}、装備 ${N.toLocaleString()} zen、キット ${M.toLocaleString()} zen）</h3>
+    <div class="table-wrap">
+      <table class="rates">
+        <tr><th>ランク</th><th>キットを使うべき強化値</th><th>最適戦略<br>期待コスト(zen)</th><th>キット不使用<br>(zen)</th><th>全キット<br>(zen)</th><th>不使用比<br>節約</th></tr>
+        ${cmpRows}
+      </table>
+    </div>
+    <h3 class="section">キット価格の感度（キットを使うべき強化値がどう変わるか）</h3>
+    <div class="table-wrap">
+      <table class="rates">
+        <tr><th>キット価格</th>${groups.map(g => `<th>${g[0]}</th>`).join("")}</tr>
+        ${senRows}
+      </table>
+    </div>
+    <div class="note">
+      キット価格を大きく変えても境界がほとんど動かない場合、その境界は価格ではなく
+      「大成功・超大成功による強化値スキップの利益」と「失敗による強化書の損失」のバランス（＝ランクの確率設定）で決まっています。
+    </div>`;
+}
+
+/* ================= render: log / stats ================= */
+function renderLog() {
+  const el = document.getElementById("tab-log");
+  const s = state.stats;
+  const pct = (n) => s.attempts ? fmt(n / s.attempts * 100) + "%" : "-";
+
+  el.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-cell"><div class="label">強化回数</div><div class="value">${s.attempts}</div></div>
+      <div class="stat-cell"><div class="label">成功（+1）</div><div class="value" style="color:var(--success)">${s.success}</div><div class="rate">${pct(s.success)}</div></div>
+      <div class="stat-cell"><div class="label">大成功（+2）</div><div class="value" style="color:var(--great)">${s.great}</div><div class="rate">${pct(s.great)}</div></div>
+      <div class="stat-cell"><div class="label">超大成功（+3）</div><div class="value" style="color:var(--super)">${s.super}</div><div class="rate">${pct(s.super)}</div></div>
+      <div class="stat-cell"><div class="label">失敗</div><div class="value" style="color:var(--fail)">${s.fail}</div><div class="rate">${pct(s.fail)}</div></div>
+      <div class="stat-cell"><div class="label">作成した強化書</div><div class="value" style="color:var(--gold)">${s.converted}</div></div>
+      <div class="stat-cell"><div class="label">使用したキット</div><div class="value" style="color:var(--gold)">${s.kits}</div></div>
+    </div>
+    <div class="note" style="margin:-6px 0 16px">
+      消費コスト目安:
+      変換で消滅した装備 ${s.converted * 2}個 × ${state.prices.equip.toLocaleString()} zen
+      ＋ キット ${s.kits}個 × ${state.prices.kit.toLocaleString()} zen
+      = <b style="color:var(--gold)">${(s.converted * 2 * state.prices.equip + s.kits * state.prices.kit).toLocaleString()} zen</b>
+    </div>
+    <h3 class="section">履歴（新しい順・最大200件）</h3>
+    <div class="log-list">
+      ${state.log.length
+        ? state.log.map(l => `
+            <div class="log-entry">
+              <span class="time">${l.time}</span>
+              <span class="tag ${l.cls}">${l.tag}</span>
+              <span class="desc">${esc(l.desc)}</span>
+            </div>`).join("")
+        : '<div class="empty-note">まだ履歴がありません。</div>'}
+    </div>`;
+}
+
+/* ================= render: effective rate table ================= */
+function renderEffectiveTable() {
+  const bands = [[0, 3], [4, 6], [7, 9], [10, 12]];
+  const groups = [["F / E / D", "F"], ["C / B", "C"], ["A / S", "A"]];
+  let html = '<table class="rates"><tr><th>強化値＼ランク</th>' +
+    groups.map(g => `<th>${g[0]}</th>`).join("") + "</tr>";
+  bands.forEach(([lo, hi]) => {
+    html += `<tr><td>+${lo} 〜 +${hi}</td>`;
+    groups.forEach(([, rank]) => {
+      const [rs, rg, ru] = ratesFor(rank, lo);
+      html += `<td>${fmt(rs + rg + ru)}%<br><span style="color:var(--muted);font-size:0.75rem">${fmt(rs)} / ${fmt(rg)} / ${fmt(ru)}</span></td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</table>";
+  document.getElementById("effective-table").innerHTML = html;
+}
+
+/* ================= render: price table ================= */
+// キット使用（100%成功・+1ずつ）前提の決定論的コスト
+//   +k 装備価格:  C(0) = N,  C(k+1) = C(k) + 強化書(k) + キット = 3·C(k) + M
+//   +k 強化書作成価格: 2 × C(k)（同じ強化値の装備2個を変換）
+function renderPriceTable() {
+  const n = state.prices.equip, m = state.prices.kit;
+  const z = (v) => v.toLocaleString() + " zen";
+
+  let html = `<table class="rates">
+    <tr><th>強化値</th><th>+k 装備価格</th><th>+k 強化書作成価格<br>（装備2個）</th><th>+k → +(k+1) 強化コスト<br>（強化書＋キット）</th></tr>`;
+  let c = n;
+  for (let k = 0; k <= MAX_ENHANCE_FROM; k++) {
+    html += `<tr><td>+${k}</td><td>${z(c)}</td><td>${z(2 * c)}</td><td>${z(2 * c + m)}</td></tr>`;
+    c = 3 * c + m;
+  }
+  html += `<tr><td>+${MAX_ENHANCE_FROM + 1}</td><td>${z(c)}</td><td colspan="2" style="color:var(--muted)">これ以上強化できません</td></tr>`;
+  html += "</table>";
+  document.getElementById("price-table").innerHTML = html;
+
+  document.getElementById("price-formula").innerHTML =
+    `装備 = <b>${n.toLocaleString()} zen</b>、解読キット = <b>${m.toLocaleString()} zen</b> として計算。<br>` +
+    `+k 装備の価格は、1段上げるごとに「本体 ＋ 強化書（同値装備2個分）＋ キット」が掛かるため、およそ3倍ずつ増えていきます。<br>` +
+    `※キットを使わない場合は失敗と大成功・超大成功があるため確率次第で上下します（この表は確定強化の理論値）。`;
+
+  // ランク別 +k 強化書作成価格（最適戦略調達）
+  const groups = [["F / E / D", "F"], ["C / B", "C"], ["A / S", "A"]];
+  const priceByRank = groups.map(([, r]) => scrollPrices(r, n, m, false));
+  let sHtml = '<table class="rates"><tr><th>強化書</th>' +
+    groups.map(g => `<th>${g[0]}</th>`).join("") + "</tr>";
+  for (let k = 0; k <= MAX_ENHANCE_FROM; k++) {
+    sHtml += `<tr><td>+${k} 強化書</td>` +
+      priceByRank.map(S => `<td>${Math.round(S[k]).toLocaleString()} zen</td>`).join("") + "</tr>";
+  }
+  sHtml += "</table>";
+  document.getElementById("scroll-price-table").innerHTML = sHtml;
+}
+
+/* ================= tabs / global ================= */
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t =>
+    t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".tab-body").forEach(b =>
+    b.classList.toggle("active", b.id === "tab-" + name));
+}
+
+function renderAll() {
+  renderInventory();
+  renderScrolls();
+  renderPrices();
+  renderForge();
+  renderConvert();
+  renderLog();
+  renderPriceTable();
+}
+
+/* ================= init ================= */
+function init() {
+  load();
+
+  // plus selectors
+  const plusSel = document.getElementById("add-plus");
+  const scrollSel = document.getElementById("scroll-add-plus");
+  for (let p = 0; p <= MAX_ENHANCE_FROM; p++) {
+    plusSel.insertAdjacentHTML("beforeend", `<option value="${p}">+${p}</option>`);
+    scrollSel.insertAdjacentHTML("beforeend", `<option value="${p}">+${p} 強化書</option>`);
+  }
+
+  document.querySelectorAll(".tab").forEach(t =>
+    t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+  document.getElementById("btn-add").addEventListener("click", () => {
+    const rank = document.getElementById("add-rank").value;
+    const plus = Number(plusSel.value);
+    const count = Math.max(1, Math.min(999, Number(document.getElementById("add-count").value) || 1));
+    for (let i = 0; i < count; i++) state.equipment.push(mkItem(rank, plus));
+    save();
+    renderAll();
+  });
+
+  document.getElementById("btn-scroll-add").addEventListener("click", () => {
+    const plus = Number(scrollSel.value);
+    const n = Math.max(1, Math.min(999, Number(document.getElementById("scroll-add-count").value) || 1));
+    state.scrolls[plus] = scrollCount(plus) + n;
+    save();
+    renderAll();
+  });
+
+  document.getElementById("btn-kit-add").addEventListener("click", () => {
+    const n = Math.max(1, Math.min(999, Number(document.getElementById("kit-add-count").value) || 1));
+    state.kits += n;
+    save();
+    renderAll();
+  });
+
+  // 検証タブ
+  const simStart = document.getElementById("sim-start");
+  const simTarget = document.getElementById("sim-target");
+  for (let p = 0; p <= MAX_ENHANCE_FROM; p++) {
+    simStart.insertAdjacentHTML("beforeend", `<option value="${p}">+${p}</option>`);
+  }
+  for (let p = 1; p <= MAX_ENHANCE_FROM + 3; p++) {
+    simTarget.insertAdjacentHTML("beforeend", `<option value="${p}" ${p === 10 ? "selected" : ""}>+${p}</option>`);
+  }
+  document.getElementById("btn-sim-run").addEventListener("click", runSim);
+
+  const optTarget = document.getElementById("opt-target");
+  for (let p = 1; p <= MAX_ENHANCE_FROM + 1; p++) {
+    optTarget.insertAdjacentHTML("beforeend", `<option value="${p}" ${p === MAX_ENHANCE_FROM + 1 ? "selected" : ""}>+${p}</option>`);
+  }
+  document.getElementById("btn-opt-run").addEventListener("click", runOptimize);
+  document.getElementById("btn-opt-all").addEventListener("click", runCompareAll);
+
+  const priceEquip = document.getElementById("price-equip");
+  const priceKit = document.getElementById("price-kit");
+  function onPriceChange() {
+    state.prices.equip = Math.max(0, Number(priceEquip.value) || 0);
+    state.prices.kit = Math.max(0, Number(priceKit.value) || 0);
+    save();
+    document.getElementById("price-summary").innerHTML = "";
+    renderPrices();
+    renderConvert();
+    renderLog();
+    renderPriceTable();
+  }
+  priceEquip.addEventListener("change", onPriceChange);
+  priceKit.addEventListener("change", onPriceChange);
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    if (!confirm("すべてのデータをリセットして初期状態に戻します。よろしいですか？")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    nextId = 1;
+    selectedId = null;
+    convertPairs = {};
+    state = defaultState();
+    save();
+    renderAll();
+  });
+
+  renderEffectiveTable();
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>
