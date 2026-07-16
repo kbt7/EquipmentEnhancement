@@ -448,12 +448,14 @@
       <h3 class="section">価格表（解読キット使用・100%成功で+1ずつ強化した場合）</h3>
       <div class="table-wrap" id="price-table"></div>
       <div class="note" id="price-formula"></div>
-      <h3 class="section" style="margin-top:20px">+k 強化書の作成価格と素材用装備の相場（素材 = D以下の装備）</h3>
+      <h3 class="section" style="margin-top:20px">相場表（素材用装備・強化書）— 実際の相場を入力できます</h3>
       <div class="table-wrap" id="scroll-price-table"></div>
       <div class="note">
-        強化書はランクを問わないため、素材には最も安く育つD以下（F/E/D、成功率が最も高い）の装備を使う前提です。
-        相場は「確率強化とキットを最適に使い分けて+kまで育てる期待コスト」、強化書の作成価格はその2個分です。
-        上のキット確定の表は「絶対に失敗しない」前提の上限値です。
+        ・実際のゲーム内相場が分かっている欄に入力してください（空欄に戻すと予想値に戻ります）。<br>
+        ・<b>未入力の欄は、それ以下の強化値の相場データ（入力値＋価格設定）から予想値を自動計算</b>して薄字で表示します。
+        予想値は「入力済みの下位装備を起点に、確率強化とキットを最適に使い分けて+kまで育てる最小期待コスト」（素材はD以下＝成功率最高）、
+        強化書は「同値の素材装備2個分」です。<br>
+        ・検証タブの最適戦略・全ランク比較は、この相場表の値（入力値＋予想値）を使って計算します。
       </div>
       <div class="note" style="margin-top:14px">
         ・強化には対象装備と同じ強化値の強化書が1枚必要です。<br>
@@ -509,6 +511,7 @@ function defaultState() {
     scrolls: {},                      // plus -> count
     kits: 0,                          // 強化書解読キット所持数
     prices: { equip: 2, kit: 3 },     // 装備価格 / キット価格 (zen)
+    market: { equip: {}, scroll: {} },// 相場の手入力値: 強化値 -> zen（未入力は予想値で補完）
     stats: { attempts: 0, success: 0, great: 0, super: 0, fail: 0, converted: 0, kits: 0 },
     log: [],
   };
@@ -518,6 +521,7 @@ function defaultState() {
 function normalizeState() {
   if (typeof state.kits !== "number") state.kits = 0;
   if (!state.prices) state.prices = { equip: 2, kit: 3 };
+  if (!state.market) state.market = { equip: {}, scroll: {} };
   if (typeof state.stats.kits !== "number") state.stats.kits = 0;
 }
 
@@ -1081,24 +1085,34 @@ function dpExpectedCost(rank, T, S, M, policy) {
   return { E, choice, detail };
 }
 
-// 強化書価格 S[0..12] を算出
-//   strict: 材料装備をキット確定強化で調達（価格表と同モデル・厳密）
-//   それ以外: 材料装備も最適戦略で調達（自己無撞着・近似 ※超過到達分も+kとして扱う）
-function scrollPrices(rank, N, M, strict) {
-  const S = [2 * N];
-  if (strict) {
-    let c = N;
-    for (let k = 1; k <= MAX_SCROLL; k++) {
-      c = 3 * c + M;
-      S[k] = 2 * c;
+// 相場（手入力値＋予想値）を算出。V[k]=素材用装備(D以下)+k、S[k]=+k強化書、k=0..MAX_SCROLL
+//   入力がある強化値はその値を使用。ない場合は、それ以下の相場データから予想:
+//     通常: 入力済み/予想済みの下位装備を起点に、最適戦略（確率強化/キット使い分け）で
+//           +k まで育てる最小期待コスト（素材はD以下＝F/E/D確率）
+//     strict: 1段ごとに「本体＋強化書＋キット」のキット確定強化（上限値）
+//   強化書の予想値は「同値の素材装備2個分」
+function marketPrices(strict, M) {
+  const N = state.prices.equip;
+  if (M === undefined) M = state.prices.kit;
+  const V = [], S = [], predV = [];
+  for (let k = 0; k <= MAX_SCROLL; k++) {
+    let pred;
+    if (k === 0) {
+      pred = N;
+    } else if (strict) {
+      pred = 3 * V[k - 1] + M;
+    } else {
+      const { E } = dpExpectedCost("F", k, S, M, "opt");   // S[0..k-1] は確定済み
+      pred = Infinity;
+      for (let j = 0; j < k; j++) pred = Math.min(pred, V[j] + E[j]);
     }
-  } else {
-    for (let k = 1; k <= MAX_SCROLL; k++) {
-      const { E } = dpExpectedCost(rank, k, S, M, "opt");
-      S[k] = 2 * (N + E[0]);
-    }
+    predV[k] = pred;
+    const oe = state.market.equip[k];
+    V[k] = (typeof oe === "number") ? oe : pred;
+    const os = state.market.scroll[k];
+    S[k] = (typeof os === "number") ? os : 2 * V[k];
   }
-  return S;
+  return { V, S, predV };
 }
 
 // 指定ポリシーで 0→T をモンテカルロ試行し平均コストを返す
@@ -1127,8 +1141,8 @@ function runOptimize() {
   const out = document.getElementById("opt-result");
   const z = (v) => Math.round(v).toLocaleString();
 
-  // 強化書の素材は最も安いD以下（F/E/D）の装備で作る前提
-  const S = scrollPrices("F", N, M, strict);
+  // 強化書価格は相場表（手入力値＋予想値）を使用
+  const S = marketPrices(strict).S;
   const opt = dpExpectedCost(rank, T, S, M, "opt");
   const none = dpExpectedCost(rank, T, S, M, "roll");
   const all = dpExpectedCost(rank, T, S, M, "kit");
@@ -1164,7 +1178,7 @@ function runOptimize() {
     </div>
     <div class="note" style="margin-bottom:12px">
       条件: ${rank}ランク +0 → +${T}、装備 ${N.toLocaleString()} zen、キット ${M.toLocaleString()} zen、
-      強化書価格 = D以下の素材装備を${strict ? "キット確定調達（厳密）" : "最適戦略調達（近似）"}
+      強化書価格 = 相場表の値（未入力分は${strict ? "キット確定調達" : "最適戦略調達"}の予想値）
       ／ 実測平均は各戦略 ${MC_TRIALS.toLocaleString()} 回のモンテカルロ試行。<br>
       <b style="color:var(--accent)">結論: ${
         kitLevels.length === 0
@@ -1202,7 +1216,7 @@ function compressLevels(arr) {
 }
 
 function optKitLevels(rank, T, N, M, strict) {
-  const S = scrollPrices("F", N, M, strict);   // 素材はD以下装備
+  const S = marketPrices(strict, M).S;         // 相場表（手入力＋予想値）
   const opt = dpExpectedCost(rank, T, S, M, "opt");
   const levels = [];
   for (let j = 0; j < T; j++) if (opt.choice[j] === "kit") levels.push(j);
@@ -1340,15 +1354,41 @@ function renderPriceTable() {
     `+k 装備の価格は、1段上げるごとに「本体 ＋ 強化書（同値装備2個分）＋ キット」が掛かるため、およそ3倍ずつ増えていきます。<br>` +
     `※キットを使わない場合は失敗と大成功・超大成功があるため確率次第で上下します（この表は確定強化の理論値）。`;
 
-  // +k 強化書作成価格と素材用装備（D以下）の相場（最適戦略調達）
-  const S = scrollPrices("F", n, m, false);
+  // 相場表（手入力可・未入力はそれ以下のデータから予想）
+  const mp = marketPrices(false);
   let sHtml = `<table class="rates">
-    <tr><th>強化値</th><th>素材用装備（D以下）+k の相場</th><th>+k 強化書の作成価格<br>（素材装備2個）</th></tr>`;
+    <tr><th>強化値</th><th>素材用装備（D以下）+k の相場</th><th>+k 強化書の相場</th></tr>`;
   for (let k = 0; k <= MAX_SCROLL; k++) {
-    sHtml += `<tr><td>+${k}</td><td>${Math.round(S[k] / 2).toLocaleString()} zen</td><td>${Math.round(S[k]).toLocaleString()} zen</td></tr>`;
+    const oe = state.market.equip[k], os = state.market.scroll[k];
+    const eOver = typeof oe === "number", sOver = typeof os === "number";
+    sHtml += `<tr>
+      <td>+${k}</td>
+      <td>
+        <input type="number" min="0" data-mk="equip" data-plus="${k}" style="width:110px"
+          value="${eOver ? oe : ""}" placeholder="${Math.round(mp.predV[k]).toLocaleString()}"> zen
+        ${eOver ? '<span style="color:var(--gold);font-size:0.72rem">入力値</span>' : '<span style="color:var(--muted);font-size:0.72rem">予想</span>'}
+      </td>
+      <td>
+        <input type="number" min="0" data-mk="scroll" data-plus="${k}" style="width:110px"
+          value="${sOver ? os : ""}" placeholder="${Math.round(2 * mp.V[k]).toLocaleString()}"> zen
+        ${sOver ? '<span style="color:var(--gold);font-size:0.72rem">入力値</span>' : '<span style="color:var(--muted);font-size:0.72rem">予想</span>'}
+      </td>
+    </tr>`;
   }
   sHtml += "</table>";
-  document.getElementById("scroll-price-table").innerHTML = sHtml;
+  const wrap = document.getElementById("scroll-price-table");
+  wrap.innerHTML = sHtml;
+
+  wrap.querySelectorAll("input[data-mk]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const kind = inp.dataset.mk, k = Number(inp.dataset.plus);
+      const v = inp.value.trim();
+      if (v === "" || isNaN(Number(v)) || Number(v) < 0) delete state.market[kind][k];
+      else state.market[kind][k] = Number(v);
+      save();
+      renderPriceTable();   // 予想値（上位の欄）を再計算
+    });
+  });
 }
 
 /* ================= tabs / global ================= */
