@@ -1545,44 +1545,61 @@ function renderSellStrategy(mp, costEff, M) {
     upCost[k] = 2 * E[k];
   }
 
-  // W[k] = +k 強化書1枚を出発点に得られる最大の手取り。後ろから決定
-  const W = [], upgrade = [];
-  W[MAX_SCROLL] = P[MAX_SCROLL];
-  for (let k = MAX_SCROLL - 1; k >= 0; k--) {
-    const upNet = W[k + 1] - upCost[k];
-    upgrade[k] = upNet > P[k];
-    W[k] = Math.max(P[k], upNet);
+  // ① 資金効率（ROI）: その強化書を作って売る商売の利回り = 粗利 ÷ 製造原価
+  const makeROI = [];
+  for (let k = 0; k <= MAX_SCROLL; k++) {
+    makeROI[k] = inputCost[k] > 0 ? (P[k] - inputCost[k]) / inputCost[k] : 0;
   }
-  // 最適な売り時（そのレベルから上げ続けた場合の到達先）
+  let bestROILevel = 0;
+  for (let k = 1; k <= MAX_SCROLL; k++) if (makeROI[k] > makeROI[bestROILevel]) bestROILevel = k;
+  const bestROI = makeROI[bestROILevel];
+
+  // ② すでに +k を持っている場合に1段上げる投資効率
+  //    投資 = 売却で得られたはずの P[k]（機会費用）＋ 追加コスト、回収 = P[k+1]
+  const upROI = [], upgrade = [];
+  for (let k = 0; k < MAX_SCROLL; k++) {
+    const invest = P[k] + upCost[k];
+    upROI[k] = invest > 0 ? (P[k + 1] - invest) / invest : 0;
+    // 上げるのは、その資金を「最も効率の良い商売」に回すより儲かる場合だけ
+    upgrade[k] = upROI[k] > bestROI;
+  }
+  // 上げ続けた場合の到達先（連鎖）
   const bestLevel = [];
   for (let k = MAX_SCROLL; k >= 0; k--) bestLevel[k] = upgrade[k] ? bestLevel[k + 1] : k;
 
-  let html = `<table class="rates">
-    <tr><th>強化書</th><th>販売額<br>（入力可）</th><th>製造原価<br>（最安）</th><th>粗利<br>（販売額−原価）</th><th>1段上げる<br>追加コスト</th><th>上げて売った<br>場合の純増</th><th>判定</th><th>最適な<br>売り時</th></tr>`;
+  const pct = (r) => (r >= 0 ? "+" : "−") + Math.abs(r * 100).toFixed(1) + "%";
+  let html = `<div class="note" style="margin:0 0 12px;padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px">
+      <b style="color:var(--gold)">🏆 最も資金効率が良いのは「+${bestROILevel} 強化書を作って売る」</b>
+      ／ 原価 ${z(inputCost[bestROILevel])} → 販売 ${z(P[bestROILevel])}、
+      利益率 <b style="color:${bestROI > 0 ? "var(--success)" : "var(--fail)"}">${pct(bestROI)}</b>
+      （同じ資金なら、この強化書を数多く作って売るのが最大の利益になります）
+    </div>
+    <table class="rates">
+    <tr><th>強化書</th><th>販売額<br>（入力可）</th><th>製造原価<br>（最安）</th><th>粗利</th><th>利益率<br>（ROI）</th><th>1段上げる<br>追加コスト</th><th>上げて売る<br>投資効率</th><th>判定</th><th>最適な<br>売り時</th></tr>`;
   for (let k = 0; k <= MAX_SCROLL; k++) {
     const os = state.market.sell[k];
     const over = typeof os === "number";
     const profit = P[k] - inputCost[k];
-    const margin = inputCost[k] > 0 ? profit / inputCost[k] * 100 : 0;
     const pColor = profit > 0 ? "var(--success)" : profit < 0 ? "var(--fail)" : "var(--muted)";
+    const isBest = k === bestROILevel;
 
     let upCell = '<span style="color:var(--muted)">—（最終）</span>';
     let verdict = "今売る", vColor = "var(--accent)";
     if (k < MAX_SCROLL) {
-      const gain = (W[k + 1] - upCost[k]) - P[k];
-      const gColor = gain > 0 ? "var(--success)" : "var(--fail)";
-      upCell = `<span style="color:${gColor}">${gain >= 0 ? "+" : "−"}${Math.abs(Math.round(gain)).toLocaleString()} zen</span>`;
+      const rColor = upgrade[k] ? "var(--success)" : "var(--fail)";
+      upCell = `<span style="color:${rColor}">${pct(upROI[k])}</span>`;
       if (upgrade[k]) { verdict = `+${bestLevel[k]} まで上げて売る`; vColor = "var(--success)"; }
     }
-    html += `<tr>
-      <td>+${k} 強化書</td>
+    html += `<tr${isBest ? ' style="background:rgba(232,184,75,0.12)"' : ""}>
+      <td>+${k} 強化書${isBest ? ' <span style="color:var(--gold)">🏆</span>' : ""}</td>
       <td>
         <input type="number" min="0" data-mk="sell" data-plus="${k}" style="width:100px"
           value="${over ? os : ""}" placeholder="${Math.round(predP[k]).toLocaleString()}">
         ${over ? '<span style="color:var(--gold);font-size:0.72rem">入力</span>' : '<span style="color:var(--muted);font-size:0.72rem">予想</span>'}
       </td>
       <td>${z(inputCost[k])}</td>
-      <td style="color:${pColor}">${profit >= 0 ? "+" : "−"}${Math.abs(Math.round(profit)).toLocaleString()}<br><span style="font-size:0.72rem">${margin >= 0 ? "+" : ""}${margin.toFixed(1)}%</span></td>
+      <td style="color:${pColor}">${profit >= 0 ? "+" : "−"}${Math.abs(Math.round(profit)).toLocaleString()}</td>
+      <td style="font-weight:700;color:${pColor}">${pct(makeROI[k])}</td>
       <td>${k < MAX_SCROLL ? z(upCost[k]) : '<span style="color:var(--muted)">—</span>'}</td>
       <td>${upCell}</td>
       <td style="font-weight:700;color:${vColor}">${verdict}</td>
@@ -1605,13 +1622,15 @@ function renderSellStrategy(mp, costEff, M) {
   });
 
   document.getElementById("sell-strategy-note").innerHTML =
-    `<b>販売額</b>に実際に売れる価格を入力してください（未入力なら強化書の相場を予想値として使用）。<br>` +
-    `<b>1段上げる追加コスト</b> = +k 強化書1枚（＝+k 装備2個）を +(k+1) 強化書にするための費用。` +
+    `<b>販売額</b>に実際に売れる価格を入力してください（未入力なら最安の製造原価を予想値として使用＝粗利0が基準）。<br>` +
+    `<b>利益率（ROI）</b> = 粗利 ÷ 製造原価。<b>資金あたりの儲けやすさ</b>で、これが最大の強化書（🏆）を量産するのが最も効率的な商売です。` +
+    `安い強化書でも利益率が高ければ、数を売ることで高額な強化書より儲かります。<br>` +
+    `<b>1段上げる追加コスト</b> = +k 強化書1枚（＝+k 装備2個）を +(k+1) 強化書にする費用。` +
     `装備2個をそれぞれ1段上げる必要があるため、<b>強化1回分ではなく2個分</b>のコストが掛かります。` +
     `消費する強化書は最安の方法で調達し、キットは得な場合のみ使う前提です。<br>` +
-    `<b>上げて売った場合の純増</b> = そのまま売るより手取りがいくら増えるか（マイナスなら損）。` +
-    `2段以上先まで上げた方が得な場合も考慮して計算しており、その到達先が<b>最適な売り時</b>です。<br>` +
-    `<b>粗利</b> = 販売額 − 製造原価（最安）。マイナスなら作って売るだけ赤字になります。`;
+    `<b>上げて売る投資効率</b> = （+(k+1) の販売額 − 投資）÷ 投資。投資には「今売れば得られたはずの販売額（機会費用）」も含みます。<br>` +
+    `<b>判定</b>は、<b>この投資効率が最も効率の良い商売（🏆 ${pct(bestROI)}）を上回る場合だけ「上げて売る」</b>としています。` +
+    `単に高く売れるだけでは不十分で、その資金を他の強化書の量産に回すより儲かる必要があるためです。`;
 }
 
 /* ================= tabs / global ================= */
