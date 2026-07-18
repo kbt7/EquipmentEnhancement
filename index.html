@@ -1114,25 +1114,28 @@ function dpExpectedCost(rank, T, S, M, policy) {
 function marketPrices(strict, M) {
   const N = state.prices.equip;
   if (M === undefined) M = state.prices.kit;
-  const V = [], S = [], predV = [];
+  const V = [], S = [], predV = [], minV = [], A = [];
   for (let k = 0; k <= MAX_SCROLL; k++) {
     let pred;
     if (k === 0) {
       pred = N;
     } else if (strict) {
-      pred = 3 * V[k - 1] + M;
+      pred = 3 * minV[k - 1] + M;
     } else {
-      const { E } = dpExpectedCost("F", k, S, M, "opt");   // S[0..k-1] は確定済み
+      // 消費する強化書は必ず最安手段(A)で調達する前提。相場が割高なら自作に切り替わる
+      const { E } = dpExpectedCost("F", k, A, M, "opt");   // A[0..k-1] は確定済み
       pred = Infinity;
-      for (let j = 0; j < k; j++) pred = Math.min(pred, V[j] + E[j]);
+      for (let j = 0; j < k; j++) pred = Math.min(pred, minV[j] + E[j]);
     }
     predV[k] = pred;
     const oe = state.market.equip[k];
-    V[k] = (typeof oe === "number") ? oe : pred;
+    V[k] = (typeof oe === "number") ? oe : pred;      // 表示用（相場入力があればその値）
+    minV[k] = Math.min(V[k], pred);                    // 実際に手に入れる最安コスト
     const os = state.market.scroll[k];
-    S[k] = (typeof os === "number") ? os : 2 * V[k];
+    S[k] = (typeof os === "number") ? os : 2 * V[k];  // 表示用の強化書相場
+    A[k] = Math.min(S[k], 2 * minV[k]);                // 強化書1枚の最安調達コスト
   }
-  return { V, S, predV };
+  return { V, S, predV, A };
 }
 
 // 相場を一切使わず、+0 の素材装備（装備価格）だけを起点に最適戦略で積み上げた理論値。
@@ -1179,7 +1182,7 @@ function runOptimize() {
   const z = (v) => Math.round(v).toLocaleString();
 
   // 強化書価格は相場表（手入力値＋予想値）を使用
-  const S = marketPrices(strict).S;
+  const S = marketPrices(strict).A;   // 強化書は最安手段で調達する前提
   const opt = dpExpectedCost(rank, T, S, M, "opt");
   const none = dpExpectedCost(rank, T, S, M, "roll");
   const all = dpExpectedCost(rank, T, S, M, "kit");
@@ -1253,7 +1256,7 @@ function compressLevels(arr) {
 }
 
 function optKitLevels(rank, T, N, M, strict) {
-  const S = marketPrices(strict, M).S;         // 相場表（手入力＋予想値）
+  const S = marketPrices(strict, M).A;         // 強化書の最安調達コスト
   const opt = dpExpectedCost(rank, T, S, M, "opt");
   const levels = [];
   for (let j = 0; j < T; j++) if (opt.choice[j] === "kit") levels.push(j);
@@ -1427,7 +1430,7 @@ function renderPriceTable() {
     });
   });
 
-  renderKitMatrix(mp.S, m);
+  renderKitMatrix(mp.A, m);
   const costEff = renderScrollCostEff(mp);
   renderSellStrategy(mp, costEff, m);
 }
@@ -1514,7 +1517,7 @@ function renderScrollCostEff(mp) {
     `「途中の強化値を相場で買って近道する」②と「完全自給する」③の差が出ます。`;
 
   // 販売戦略で使う「+k 強化書を1枚用意する最安コスト」を返す
-  return { cheapest: (k) => Math.min(mp.S[k], 2 * mp.V[k], sc.S[k]) };
+  return { cheapest: (k) => Math.min(mp.A[k], sc.S[k]) };
 }
 
 /* ================= render: sell strategy (sell now vs upgrade) ================= */
@@ -1527,10 +1530,10 @@ function renderSellStrategy(mp, costEff, M) {
   const inputCost = [];
   for (let k = 0; k <= MAX_SCROLL; k++) inputCost[k] = costEff.cheapest(k);
 
-  // 販売額 P[k]（未入力は強化書相場を予想値として使用）
+  // 販売額 P[k]（未入力は「最安で作った場合の原価」を予想値として使用＝粗利0が基準）
   const P = [], predP = [];
   for (let k = 0; k <= MAX_SCROLL; k++) {
-    predP[k] = mp.S[k];
+    predP[k] = inputCost[k];
     const os = state.market.sell[k];
     P[k] = (typeof os === "number") ? os : predP[k];
   }
