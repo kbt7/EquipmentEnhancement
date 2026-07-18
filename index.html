@@ -466,6 +466,10 @@
       <h3 class="section" style="margin-top:20px">💰 強化書の費用対効果（買う vs 作る）</h3>
       <div class="table-wrap" id="scroll-costeff-table"></div>
       <div class="note" id="scroll-costeff-note"></div>
+
+      <h3 class="section" style="margin-top:20px">💹 強化書の販売戦略（今売る vs 上げて売る）</h3>
+      <div class="table-wrap" id="sell-strategy-table"></div>
+      <div class="note" id="sell-strategy-note"></div>
       <div class="note" style="margin-top:14px">
         ・強化には対象装備と同じ強化値の強化書が1枚必要です。<br>
         ・失敗しても装備は消えず、強化書のみ消費されます。<br>
@@ -520,7 +524,7 @@ function defaultState() {
     scrolls: {},                      // plus -> count
     kits: 0,                          // 強化書解読キット所持数
     prices: { equip: 2, kit: 3 },     // 装備価格 / キット価格 (zen)
-    market: { equip: {}, scroll: {} },// 相場の手入力値: 強化値 -> zen（未入力は予想値で補完）
+    market: { equip: {}, scroll: {}, sell: {} }, // 相場/販売額の手入力値: 強化値 -> zen（未入力は予想値）
     stats: { attempts: 0, success: 0, great: 0, super: 0, fail: 0, converted: 0, kits: 0 },
     log: [],
   };
@@ -530,7 +534,8 @@ function defaultState() {
 function normalizeState() {
   if (typeof state.kits !== "number") state.kits = 0;
   if (!state.prices) state.prices = { equip: 2, kit: 3 };
-  if (!state.market) state.market = { equip: {}, scroll: {} };
+  if (!state.market) state.market = { equip: {}, scroll: {}, sell: {} };
+  if (!state.market.sell) state.market.sell = {};
   if (typeof state.stats.kits !== "number") state.stats.kits = 0;
 }
 
@@ -1423,7 +1428,8 @@ function renderPriceTable() {
   });
 
   renderKitMatrix(mp.S, m);
-  renderScrollCostEff(mp);
+  const costEff = renderScrollCostEff(mp);
+  renderSellStrategy(mp, costEff, m);
 }
 
 /* ================= render: kit-use recommendation matrix ================= */
@@ -1506,6 +1512,103 @@ function renderScrollCostEff(mp) {
     `<b>費用対効果 ×N</b> は「買値 ÷ ②③のうち安い方」。1.00超なら買うより自作が割安で、その倍率だけお得です。<br>` +
     `※相場を何も入力していない場合、①②③はすべて同じ理論値（同等）になります。相場を入力すると、` +
     `「途中の強化値を相場で買って近道する」②と「完全自給する」③の差が出ます。`;
+
+  // 販売戦略で使う「+k 強化書を1枚用意する最安コスト」を返す
+  return { cheapest: (k) => Math.min(mp.S[k], 2 * mp.V[k], sc.S[k]) };
+}
+
+/* ================= render: sell strategy (sell now vs upgrade) ================= */
+// 「+k 強化書を今売る」か「1段上げて +(k+1) 強化書として売る」かを比較する。
+//   +k 強化書 = +k 装備2個。1段上げるには 2個とも +(k+1) にする必要があるため、
+//   追加コスト = 2 × （+k 装備1個を +(k+1) にする期待コスト。強化書は最安調達・キットは最適選択）
+function renderSellStrategy(mp, costEff, M) {
+  const z = (v) => Math.round(v).toLocaleString() + " zen";
+  // 消費する強化書の調達コスト（買う/素材から作る/一から作る の最安）
+  const inputCost = [];
+  for (let k = 0; k <= MAX_SCROLL; k++) inputCost[k] = costEff.cheapest(k);
+
+  // 販売額 P[k]（未入力は強化書相場を予想値として使用）
+  const P = [], predP = [];
+  for (let k = 0; k <= MAX_SCROLL; k++) {
+    predP[k] = mp.S[k];
+    const os = state.market.sell[k];
+    P[k] = (typeof os === "number") ? os : predP[k];
+  }
+
+  // 1段上げる追加コスト（強化書2枚分＝装備2個をそれぞれ+1段）
+  const upCost = [];
+  for (let k = 0; k < MAX_SCROLL; k++) {
+    const { E } = dpExpectedCost("F", k + 1, inputCost, M, "opt");
+    upCost[k] = 2 * E[k];
+  }
+
+  // W[k] = +k 強化書1枚を出発点に得られる最大の手取り。後ろから決定
+  const W = [], upgrade = [];
+  W[MAX_SCROLL] = P[MAX_SCROLL];
+  for (let k = MAX_SCROLL - 1; k >= 0; k--) {
+    const upNet = W[k + 1] - upCost[k];
+    upgrade[k] = upNet > P[k];
+    W[k] = Math.max(P[k], upNet);
+  }
+  // 最適な売り時（そのレベルから上げ続けた場合の到達先）
+  const bestLevel = [];
+  for (let k = MAX_SCROLL; k >= 0; k--) bestLevel[k] = upgrade[k] ? bestLevel[k + 1] : k;
+
+  let html = `<table class="rates">
+    <tr><th>強化書</th><th>販売額<br>（入力可）</th><th>製造原価<br>（最安）</th><th>粗利<br>（販売額−原価）</th><th>1段上げる<br>追加コスト</th><th>上げて売った<br>場合の純増</th><th>判定</th><th>最適な<br>売り時</th></tr>`;
+  for (let k = 0; k <= MAX_SCROLL; k++) {
+    const os = state.market.sell[k];
+    const over = typeof os === "number";
+    const profit = P[k] - inputCost[k];
+    const margin = inputCost[k] > 0 ? profit / inputCost[k] * 100 : 0;
+    const pColor = profit > 0 ? "var(--success)" : profit < 0 ? "var(--fail)" : "var(--muted)";
+
+    let upCell = '<span style="color:var(--muted)">—（最終）</span>';
+    let verdict = "今売る", vColor = "var(--accent)";
+    if (k < MAX_SCROLL) {
+      const gain = (W[k + 1] - upCost[k]) - P[k];
+      const gColor = gain > 0 ? "var(--success)" : "var(--fail)";
+      upCell = `<span style="color:${gColor}">${gain >= 0 ? "+" : "−"}${Math.abs(Math.round(gain)).toLocaleString()} zen</span>`;
+      if (upgrade[k]) { verdict = `+${bestLevel[k]} まで上げて売る`; vColor = "var(--success)"; }
+    }
+    html += `<tr>
+      <td>+${k} 強化書</td>
+      <td>
+        <input type="number" min="0" data-mk="sell" data-plus="${k}" style="width:100px"
+          value="${over ? os : ""}" placeholder="${Math.round(predP[k]).toLocaleString()}">
+        ${over ? '<span style="color:var(--gold);font-size:0.72rem">入力</span>' : '<span style="color:var(--muted);font-size:0.72rem">予想</span>'}
+      </td>
+      <td>${z(inputCost[k])}</td>
+      <td style="color:${pColor}">${profit >= 0 ? "+" : "−"}${Math.abs(Math.round(profit)).toLocaleString()}<br><span style="font-size:0.72rem">${margin >= 0 ? "+" : ""}${margin.toFixed(1)}%</span></td>
+      <td>${k < MAX_SCROLL ? z(upCost[k]) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${upCell}</td>
+      <td style="font-weight:700;color:${vColor}">${verdict}</td>
+      <td style="color:var(--gold);font-weight:700">+${bestLevel[k]}</td>
+    </tr>`;
+  }
+  html += "</table>";
+  const wrap = document.getElementById("sell-strategy-table");
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('input[data-mk="sell"]').forEach(inp => {
+    inp.addEventListener("change", () => {
+      const k = Number(inp.dataset.plus);
+      const v = inp.value.trim();
+      if (v === "" || isNaN(Number(v)) || Number(v) < 0) delete state.market.sell[k];
+      else state.market.sell[k] = Number(v);
+      save();
+      renderPriceTable();
+    });
+  });
+
+  document.getElementById("sell-strategy-note").innerHTML =
+    `<b>販売額</b>に実際に売れる価格を入力してください（未入力なら強化書の相場を予想値として使用）。<br>` +
+    `<b>1段上げる追加コスト</b> = +k 強化書1枚（＝+k 装備2個）を +(k+1) 強化書にするための費用。` +
+    `装備2個をそれぞれ1段上げる必要があるため、<b>強化1回分ではなく2個分</b>のコストが掛かります。` +
+    `消費する強化書は最安の方法で調達し、キットは得な場合のみ使う前提です。<br>` +
+    `<b>上げて売った場合の純増</b> = そのまま売るより手取りがいくら増えるか（マイナスなら損）。` +
+    `2段以上先まで上げた方が得な場合も考慮して計算しており、その到達先が<b>最適な売り時</b>です。<br>` +
+    `<b>粗利</b> = 販売額 − 製造原価（最安）。マイナスなら作って売るだけ赤字になります。`;
 }
 
 /* ================= tabs / global ================= */
